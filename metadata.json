@@ -1,0 +1,5 @@
+{
+  "name": "Proposition Mapper",
+  "description": "A tool that breaks any text into essential propositions and visualises their relationships in a concept map. Using Gemini, it identifies key terms, defines them based on context, and maps their relationships as a graph or a sortable list.",
+  "requestFramePermissions": []
+}
