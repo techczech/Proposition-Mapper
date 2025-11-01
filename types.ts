@@ -10,6 +10,7 @@ export interface Relationship {
   source: string;
   target: string;
   label: string;
+  isReverse?: boolean;
 }
 
 export interface GraphData {
@@ -18,7 +19,7 @@ export interface GraphData {
 }
 
 export interface HistoryItem {
-  id: string;
+  id:string;
   name: string;
   createdAt: string;
   graphData: GraphData;
@@ -51,4 +52,6 @@ export interface Node extends Term {
 // with references to the full Node objects.
 export interface Link extends d3.SimulationLinkDatum<Node> {
   label: string;
+  isReverse?: boolean;
+  isBidirectional?: boolean;
 }

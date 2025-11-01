@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import type { GraphData, Node, Link, Theme } from '../types';
@@ -32,11 +31,42 @@ const ConceptMap: React.FC<ConceptMapProps> = ({ graphData, theme, spread }) => 
     const labelColor = theme === 'dark' ? '#f1f5f9' : '#1e293b'; // slate-100 / slate-800
 
     const nodes: Node[] = terms.map(term => ({ ...term }));
-    const links: Link[] = relationships.map(rel => ({
+    // FIX: Use `any` for links during initialization. D3's `forceLink` mutates the
+    // link's `source` and `target` from string IDs to full Node objects. This
+    // dynamic nature conflicts with strict typing for the initial string-based
+    // processing.
+    const links: any[] = relationships.map(rel => ({
       source: rel.source,
       target: rel.target,
-      label: rel.label
-    })) as Link[];
+      label: rel.label,
+      isReverse: rel.isReverse,
+    }));
+
+    // Group links that connect the same two nodes, regardless of direction.
+    // This handles both bidirectional links and multiple links in the same direction.
+    const linkGroups = new Map<string, any[]>();
+    links.forEach(link => {
+      const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+      const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+      // Create a canonical key for the pair of nodes to group them
+      const key = sourceId < targetId ? `${sourceId}|${targetId}` : `${targetId}|${sourceId}`;
+      if (!linkGroups.has(key)) {
+        linkGroups.set(key, []);
+      }
+      linkGroups.get(key)!.push(link);
+    });
+
+    // Add properties to each link for rendering logic.
+    // This will determine if a link should be curved and by how much.
+    linkGroups.forEach(group => {
+      if (group.length > 1) {
+        group.forEach((link, i) => {
+          link.isMultiLink = true;
+          link.multiLinkIndex = i;
+          link.multiLinkTotal = group.length;
+        });
+      }
+    });
 
     // Adjacency check for highlighting
     const linkedByIndex = new Map<string, boolean>();
@@ -80,13 +110,14 @@ const ConceptMap: React.FC<ConceptMapProps> = ({ graphData, theme, spread }) => 
       .style("stroke","none");
 
     const link = g.append("g")
+      .selectAll("path")
+      .data(links)
+      .join("path")
       .attr("stroke", linkColor)
       .attr("stroke-opacity", 0.6)
-      .selectAll("line")
-      .data(links)
-      .join("line")
       .attr("stroke-width", 2)
       .attr("marker-end", "url(#arrowhead)")
+      .attr("fill", "none")
       .style("transition", "stroke-opacity 0.3s ease");
     
     const linkLabelGroup = g.append("g")
@@ -183,14 +214,88 @@ const ConceptMap: React.FC<ConceptMapProps> = ({ graphData, theme, spread }) => 
     gradient.append("stop").attr("offset", "100%").style("stop-color", "#38bdf8");
 
     simulation.on("tick", () => {
-      link
-        .attr("x1", d => (d.source as Node).x!)
-        .attr("y1", d => (d.source as Node).y!)
-        .attr("x2", d => (d.target as Node).x!)
-        .attr("y2", d => (d.target as Node).y!);
+      link.attr("d", d => {
+          const sourceNode = d.source as Node;
+          const targetNode = d.target as Node;
+          if (!sourceNode.x || !sourceNode.y || !targetNode.x || !targetNode.y) {
+            return null;
+          }
+
+          // Draw a straight line for single links.
+          if (!d.isMultiLink) {
+            return `M${sourceNode.x},${sourceNode.y}L${targetNode.x},${targetNode.y}`;
+          }
+
+          // Draw curved lines for multiple links between the same two nodes.
+          const dx = targetNode.x - sourceNode.x;
+          const dy = targetNode.y - sourceNode.y;
+          const dr = Math.sqrt(dx * dx + dy * dy);
+
+          // For a group of N links, the middle link (if N is odd) is straight.
+          // The links on either side are curved with increasing curvature.
+          const total = d.multiLinkTotal;
+          const index = d.multiLinkIndex;
+          
+          // This calculates a 'bend' factor. 0 for the middle link in an odd group.
+          // Positive/negative for links on either side.
+          const bend = (index - (total - 1) / 2) * 0.2;
+
+          if (bend === 0) {
+            return `M${sourceNode.x},${sourceNode.y}L${targetNode.x},${targetNode.y}`;
+          }
+
+          // Calculate the control point for a quadratic Bezier curve.
+          // The control point is offset perpendicularly from the line's midpoint.
+          const midX = (sourceNode.x + targetNode.x) / 2;
+          const midY = (sourceNode.y + targetNode.y) / 2;
+          const angle = Math.atan2(dy, dx);
+          const offset = dr * bend;
+          const cpx = midX - offset * Math.sin(angle);
+          const cpy = midY + offset * Math.cos(angle);
+
+          return `M${sourceNode.x},${sourceNode.y} Q${cpx},${cpy} ${targetNode.x},${targetNode.y}`;
+        });
 
       linkLabelGroup
-        .attr("transform", d => `translate(${((d.source as Node).x! + (d.target as Node).x!) / 2}, ${((d.source as Node).y! + (d.target as Node).y!) / 2})`);
+        .attr("transform", d => {
+            const sourceNode = d.source as Node;
+            const targetNode = d.target as Node;
+            if (!sourceNode.x || !sourceNode.y || !targetNode.x || !targetNode.y) {
+              return null;
+            }
+
+            const midX = (sourceNode.x + targetNode.x) / 2;
+            const midY = (sourceNode.y + targetNode.y) / 2;
+
+            // If it's not a multi-link, position at the midpoint.
+            if (!d.isMultiLink) {
+              return `translate(${midX},${midY})`;
+            }
+
+            // For curved links, position the label at the peak of the curve.
+            const dx = targetNode.x - sourceNode.x;
+            const dy = targetNode.y - sourceNode.y;
+            const dr = Math.sqrt(dx * dx + dy * dy);
+            const total = d.multiLinkTotal;
+            const index = d.multiLinkIndex;
+            const bend = (index - (total - 1) / 2) * 0.2;
+
+            if (bend === 0) {
+              return `translate(${midX},${midY})`;
+            }
+
+            const angle = Math.atan2(dy, dx);
+            const offset = dr * bend;
+            const cpx = midX - offset * Math.sin(angle);
+            const cpy = midY + offset * Math.cos(angle);
+
+            // The peak of a quadratic Bezier curve (at t=0.5) is a weighted average
+            // of the start, control, and end points.
+            const peakX = 0.25 * sourceNode.x + 0.5 * cpx + 0.25 * targetNode.x;
+            const peakY = 0.25 * sourceNode.y + 0.5 * cpy + 0.25 * targetNode.y;
+
+            return `translate(${peakX}, ${peakY})`;
+        });
 
       node.attr("transform", d => `translate(${d.x},${d.y})`);
     });

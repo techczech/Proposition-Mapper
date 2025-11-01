@@ -59,7 +59,7 @@ export const extractConceptsAndRelationships = async (text: string, propositionC
   // Stage 2: Extract relationships between the identified terms
   const relationshipExtractionResponse = await ai.models.generateContent({
     model: "gemini-2.5-flash",
-    contents: `Based on the following text, identify the relationships between the provided key terms. Format each relationship as a 'subject-predicate-object' triple. The subject and object must be one of the provided key terms. Please generate approximately ${propositionCount} of the most significant relationships.\n\nText:\n---\n${text}\n\nKey Terms:\n---\n${termLabels.join(', ')}`,
+    contents: `Based on the following text, identify relationships between the provided key terms. Format each relationship as a 'subject-predicate-object' triple. The subject and object must be one of the provided key terms. If a reverse relationship is also semantically valid and important (e.g., 'Plants use Photosynthesis' and 'Photosynthesis is used by Plants'), generate that reverse proposition as well and mark it with 'isReverse: true'. Please generate approximately ${propositionCount} of the most significant relationships in total.\n\nText:\n---\n${text}\n\nKey Terms:\n---\n${termLabels.join(', ')}`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -82,6 +82,10 @@ export const extractConceptsAndRelationships = async (text: string, propositionC
                   type: Type.STRING,
                   description: "The object of the relationship, must be one of the key terms.",
                 },
+                 isReverse: {
+                  type: Type.BOOLEAN,
+                  description: "Set to true if this is a meaningful reverse version of another relationship."
+                }
               },
               required: ["subject", "predicate", "object"],
             },
@@ -93,12 +97,13 @@ export const extractConceptsAndRelationships = async (text: string, propositionC
   });
   
   const relationshipResult = JSON.parse(relationshipExtractionResponse.text);
-  const rawRelationships: { subject: string; predicate: string; object: string }[] = relationshipResult.relationships || [];
+  const rawRelationships: { subject: string; predicate: string; object: string, isReverse?: boolean }[] = relationshipResult.relationships || [];
 
   const termMap = new Map(terms.map(t => [t.label.toLowerCase(), t.id]));
 
   const relationships: Relationship[] = rawRelationships
-    .map(r => {
+    // FIX: Add explicit return type to map callback to resolve type predicate error in filter.
+    .map((r): Relationship | null => {
       const sourceId = termMap.get(r.subject.toLowerCase());
       const targetId = termMap.get(r.object.toLowerCase());
       if (sourceId && targetId) {
@@ -106,6 +111,7 @@ export const extractConceptsAndRelationships = async (text: string, propositionC
           source: sourceId,
           target: targetId,
           label: r.predicate,
+          isReverse: r.isReverse || false,
         };
       }
       return null;
@@ -158,7 +164,8 @@ export const extractMoreRelationships = async (text: string, terms: Term[], exis
     const termLabelToIdMap = new Map(terms.map(t => [t.label.toLowerCase(), t.id]));
 
     const newRelationships: Relationship[] = rawRelationships
-        .map(r => {
+        // FIX: Add explicit return type to map callback to resolve potential type predicate errors.
+        .map((r): Relationship | null => {
             const sourceId = termLabelToIdMap.get(r.subject.toLowerCase());
             const targetId = termLabelToIdMap.get(r.object.toLowerCase());
             if (sourceId && targetId) {
