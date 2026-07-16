@@ -1,3 +1,12 @@
+---
+name: "Proposition Mapper"
+description: "Extracts propositions and connections from text and turns them into an interactive concept map."
+categories: [interactive-learning-objects, web-app, built-by-ai, powered-by-ai]
+updated: 2026-07-16
+deployments:
+  Appsite:
+    "Proposition Mapper": https://propositionmapper.edutools.fyi/
+---
 # Proposition Mapper
 
 Turn any text into an interactive concept map with the power of the Google Gemini API. This tool analyzes your text to extract key terms, defines them in context, and visualizes the relationships between them as a dynamic, interactive graph.
