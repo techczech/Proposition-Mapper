@@ -1,7 +1,36 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { GraphData, Term, Relationship } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let visitorKey = '';
+let credentialController = new AbortController();
+
+export function setVisitorKey(key: string): void {
+  const next = key.trim();
+  if (next === visitorKey) return;
+  credentialController.abort();
+  credentialController = new AbortController();
+  visitorKey = next;
+}
+
+const createRequest = () => {
+  if (!visitorKey) throw new Error('Add your Gemini API key above to generate propositions. Saved maps work without a key.');
+  const signal = credentialController.signal;
+  const ai = new GoogleGenAI({apiKey: visitorKey, vertexai: false});
+  return async (parameters: Parameters<typeof ai.models.generateContent>[0]) => {
+    if (signal.aborted) throw new Error('Generation stopped because the API key changed.');
+    try {
+      const result = await ai.models.generateContent({...parameters, config: {...parameters.config, abortSignal: signal}});
+      if (signal.aborted) throw new Error('Stopped');
+      return result;
+    } catch (error) {
+      if (signal.aborted) throw new Error('Generation stopped because the API key changed.');
+      const status = (error as {status?: number})?.status;
+      if (status === 401 || status === 403) throw new Error('Check your Gemini API key and its permissions, then try again.');
+      if (status === 429) throw new Error('Your Gemini API quota is exhausted. Wait and try again or check your API account.');
+      throw new Error('Gemini could not complete the request. Check your key and connection, then try again.');
+    }
+  };
+};
 
 // Helper to generate unique IDs, as Gemini doesn't provide them
 export const generateId = (label: string): string => {
@@ -9,8 +38,9 @@ export const generateId = (label: string): string => {
 };
 
 export const extractConceptsAndRelationships = async (text: string, propositionCount: number): Promise<GraphData> => {
+  const request = createRequest();
   // Stage 1: Identify key terms and their definitions
-  const termExtractionResponse = await ai.models.generateContent({
+  const termExtractionResponse = await request({
     model: "gemini-2.5-flash",
     contents: `Analyze the following text and extract the key terms. For each term, provide a short definition based on how it is used in the text. The text is:\n\n---\n\n${text}`,
     config: {
@@ -57,7 +87,7 @@ export const extractConceptsAndRelationships = async (text: string, propositionC
   const termLabels = terms.map(t => t.label);
 
   // Stage 2: Extract relationships between the identified terms
-  const relationshipExtractionResponse = await ai.models.generateContent({
+  const relationshipExtractionResponse = await request({
     model: "gemini-2.5-flash",
     contents: `Based on the following text, identify relationships between the provided key terms. Format each relationship as a 'subject-predicate-object' triple. The subject and object must be one of the provided key terms. If a reverse relationship is also semantically valid and important (e.g., 'Plants use Photosynthesis' and 'Photosynthesis is used by Plants'), generate that reverse proposition as well and mark it with 'isReverse: true'. Please generate approximately ${propositionCount} of the most significant relationships in total.\n\nText:\n---\n${text}\n\nKey Terms:\n---\n${termLabels.join(', ')}`,
     config: {
@@ -123,6 +153,7 @@ export const extractConceptsAndRelationships = async (text: string, propositionC
 
 
 export const extractMoreRelationships = async (text: string, terms: Term[], existingRelationships: Relationship[]): Promise<Relationship[]> => {
+    const request = createRequest();
     const termLabels = terms.map(t => t.label);
     const termIdToLabelMap = new Map(terms.map(t => [t.id, t.label]));
     
@@ -132,7 +163,7 @@ export const extractMoreRelationships = async (text: string, terms: Term[], exis
         return `${sourceLabel} - ${r.label} - ${targetLabel}`;
     }).join('\n');
 
-    const response = await ai.models.generateContent({
+    const response = await request({
         model: "gemini-2.5-flash",
         contents: `Based on the following text, identify 5-10 additional relationships between the provided key terms. The subject and object must be one of the provided key terms. IMPORTANT: Do not repeat any of the relationships already provided below.\n\nText:\n---\n${text}\n\nKey Terms:\n---\n${termLabels.join(', ')}\n\nExisting Relationships to Avoid:\n---\n${existingRelationshipStrings}`,
         config: {

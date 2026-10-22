@@ -60,34 +60,13 @@ git clone https://github.com/your-username/proposition-mapper.git
 cd proposition-mapper
 ```
 
-### 2. Set Up Your API Key
+### 2. Install and run
 
-The application is configured to use the Gemini API key from an environment variable. Create a `.env` file in the root of the project directory and add your key:
+Use Node 22.18 or newer. Run `npm ci` and `npm run dev`. Enter your own Gemini API key in the page when generating propositions. The key stays in memory; Clear key removes it and stops further requests. Saved maps, manual editing and import/export work without a key.
 
-```
-API_KEY=YOUR_GEMINI_API_KEY_HERE
-```
+### 3. Build for static hosting
 
-*(Note: In the provided development environment, this key is managed for you. For local setup, you must provide your own.)*
-
-### 3. Run the Application
-
-This project uses modern JavaScript features like import maps, so it doesn't require a complex build setup like Webpack or Vite for development. You can run it with any simple local web server.
-
-A common method is to use Python's built-in server:
-
-```bash
-# If you have Python 3
-python -m http.server
-```
-
-Or use `npx`, which is included with Node.js:
-
-```bash
-npx serve
-```
-
-Once the server is running, open your browser and navigate to the provided local address (e.g., `http://localhost:8000` or `http://localhost:3000`).
+Run `npm test`, `npm run typecheck` and `npm run build`. Publish `dist/` on Cloudflare Pages or another static host with build command `npm run build`. No environment key, server or Cloud Run proxy is required. Automated tests use synthetic provider responses; live API/CORS checks and switching the existing address remain separate release steps.
 
 ## Technology Stack
 

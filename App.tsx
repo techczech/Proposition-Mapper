@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { SAMPLE_TEXT } from './constants';
 import type { GraphData, Theme, HistoryItem, Relationship } from './types';
 import { ViewType } from './types';
-import { extractConceptsAndRelationships, extractMoreRelationships, generateId } from './services/geminiService';
+import { extractConceptsAndRelationships, extractMoreRelationships, generateId, setVisitorKey } from './services/geminiService';
 import ConceptMap from './components/ConceptMap';
 import ListView from './components/ListView';
 import KwicView from './components/KwicView';
@@ -12,6 +12,8 @@ import AddPropositionModal from './components/AddPropositionModal';
 import { MapIcon, ListIcon, LoadingIcon, SparklesIcon, SunIcon, MoonIcon, ImportIcon, ExportIcon, FilterIcon, CloseIcon, WandIcon, PlusIcon, KwicIcon, ExpandIcon, StudyIcon } from './components/Icons';
 
 const App: React.FC = () => {
+  const [apiKey, setApiKey] = useState('');
+  const changeKey = (key: string) => { setVisitorKey(key); setApiKey(key); };
   const [text, setText] = useState<string>(SAMPLE_TEXT);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -115,8 +117,7 @@ const App: React.FC = () => {
         setActiveHistoryId(newHistoryItem.id);
       }
     } catch (e) {
-      console.error(e);
-      setError('An error occurred while processing the text. Please check your API key and try again.');
+      setError(e instanceof Error ? e.message : 'Gemini could not process the text. Try again.');
     } finally {
       setLoading(false);
     }
@@ -145,8 +146,7 @@ const App: React.FC = () => {
             }
         }
     } catch(e) {
-        console.error(e);
-        setError("Could not generate more propositions. Please try again.");
+        setError(e instanceof Error ? e.message : 'Gemini could not generate more propositions. Try again.');
     } finally {
         setIsGeneratingMore(false);
     }
@@ -382,6 +382,14 @@ const App: React.FC = () => {
           </button>
         </header>
 
+        <section aria-label="API settings" className="mb-6 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+            <label htmlFor="gemini-api-key" className="text-sm font-semibold">Gemini API key</label>
+            <input id="gemini-api-key" type="password" autoComplete="off" spellCheck={false} value={apiKey} onChange={event => changeKey(event.target.value)} placeholder="Enter your own Gemini API key" className="flex-1 min-w-0 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 p-2" />
+            <button type="button" onClick={() => changeKey('')} className="border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2">Clear key</button>
+          </div>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Your key stays in this tab and is sent directly to Google for AI requests. Saved maps, imports and manual editing work without a key.</p>
+        </section>
         <main className="flex flex-col lg:flex-row gap-6">
           <div className="lg:w-1/3 flex flex-col gap-6">
             <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-lg flex flex-col">
@@ -415,7 +423,7 @@ const App: React.FC = () => {
               </div>
               <button
                 onClick={handleMapText}
-                disabled={loading}
+                disabled={loading || !apiKey.trim()}
                 className="mt-4 w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-500 dark:disabled:bg-slate-600 text-white font-bold py-3 px-4 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:scale-100 shadow-lg"
               >
                 {loading ? <LoadingIcon /> : <SparklesIcon />}
@@ -460,7 +468,7 @@ const App: React.FC = () => {
                       <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 mx-1"></div>
                       <button
                         onClick={handleGenerateMore}
-                        disabled={isGeneratingMore || loading || !graphData}
+                        disabled={isGeneratingMore || loading || !graphData || !apiKey.trim()}
                         aria-label="Generate more propositions"
                         title="Generate more propositions"
                         className="p-2 rounded-lg text-sm font-medium bg-slate-200 dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
