@@ -1,28 +1,27 @@
 ---
-title: propositionmapper Cloudflare Pages preview deployment
+title: proposition-mapper Workers preview deployment
 date: 2026-11-19
 register: FOR AGENTS
 ---
 
-# Pages preview
+# Workers static-asset preview
 
-Planned project: `propositionmapper` (account `b6ae5bced06492ee6f0c8f92776804da`). Planned preview (not created): https://propositionmapper.pages.dev/ . Production canonical and citation URL: https://propositionmapper.edutools.fyi/ .
+Worker: `proposition-mapper`. Preview: https://proposition-mapper.czechly.workers.dev/
+Production canonical and citation URL: https://propositionmapper.edutools.fyi/
+Branch: `deploy/pages-preview-batch-b`. Build output: `dist/`.
 
-This phase uses the Pages project without custom domains. DNS and the existing Cloud Run services remain unchanged. Do not attach domains or switch addresses before Dominik approves the preview list.
+The Worker name was confirmed unused before creation. Pages project creation was blocked by the account's 100-project quota. This is a separate workers.dev preview; existing Pages projects and Workers are preserved. DNS, custom domains and Cloud Run remain unchanged.
+
+From this branch, without build secrets:
 
 ```sh
-# After Cloudflare raises the account project limit:
-env -u CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID=b6ae5bced06492ee6f0c8f92776804da npx wrangler@4 pages project create propositionmapper --production-branch=main --force
 npm ci
 npm run build
-env -u CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID=b6ae5bced06492ee6f0c8f92776804da npx wrangler@4 pages deploy dist --project-name=propositionmapper --branch=main
-node ~/gitrepos/_SKILLS/skills/dev/web-design-elements/kit/check-citation.mjs https://propositionmapper.pages.dev/
+env -u CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID=b6ae5bced06492ee6f0c8f92776804da npx wrangler@4 deploy
 ```
 
-Wrangler uses its existing OAuth session. Never inject an owner API key into this browser build. The preview build deliberately defines the legacy owner-key variables as empty strings; AI features requiring them need a server and are not repaired in this phase.
+`wrangler.jsonc` serves only static build assets with SPA navigation fallback, `workers_dev: true`, and no routes or custom domains. Vite's key replacements are empty strings; no owner key is included.
 
-The local browser smoke check confirms the app starts with an empty owner key. AI generation still needs a server-held key; this phase does not add a proxy.
+AI feature needs a server: yes. The static preview supplies no server-held key.
 
-19 November 2026: project creation is blocked by the Cloudflare account project quota (API error 8000027). The build and local static citation check pass. A hidden-browser localhost check returns HTTP 200; app renders its home screen. No public preview exists yet.
-
-The one-time create command uses --force to opt out of Wrangler’s automatic Pages-to-Workers migration and honour the explicitly requested Pages platform. It does not attach a domain. Subsequent uploads to an existing Pages project use the normal deploy command.
+Earlier build fixes and source comparison are recorded in the preceding commits on this branch.
